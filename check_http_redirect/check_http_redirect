@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""check_http_redirect
+
+Simple HTTP redirect check. It just checks one level of redirects. If you need
+to test multiple redirect levels you need one check for each level. By default
+it will expect a 301 permanent redirect.
+
+Usage:
+    check_http_redirect -I <IP_address> [-p <port>] -u <url> -r <redirect> [-c <http_status>] [-a <auth>] [-t <timeout>] [-d | --debug]
+    check_http_redirect ( -h | --help )
+    check_http_redirect ( -v | --version )
+
+Options:
+    -a=<auth>           authentiction in format username:password
+    -c=<http_status>    http status code [default: 301]
+    -d, --debug         debug
+    -h, --help          show this help message and exit
+    -I=<IP_address>     http server to connect to
+    -p=<port>           TCP port [default: 80]
+    -r=<redirect>       expected "Location:" header for redirect
+    -t=<timeout>        critical timeout waiting for http response [default: 10]
+    -v, --version       show version and exit
+
+Examples:
+
+    check_http_redirect -I 192.168.0.2 -u http://example.com -r http://www.example.com
+"""
+
+import sys
+try:
+    from docopt import docopt
+except:
+    print("This check requires the docopt library.\r\n\r\n\tpip install docopt")
+    sys.exit(1)
+try:
+    import requests
+except:
+    print("This check requires the requests library.\r\n\r\n\tpip install requests")
+    sys.exit(1)
+from urllib.parse import urlparse
+import logging
+
+def main():
+    version = '0.1'
+    OK = 0
+    WARNING = 1
+    CRITICAL = 2
+    auth = False
+    headers = {}
+    vhost = None
+    username = None
+    password = None
+
+    args = docopt(__doc__, version=version)
+
+    if args['--debug']:
+        logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+    else:
+        logging.basicConfig(stream=sys.stderr, level=logging.ERROR)
+
+    logging.debug('command line args\r\n%s' % args)
+
+    headers['User-Agent'] = 'nagios'
+
+    http_status = int(args['-c'])
+    server_ip = args['-I']
+    server_port = args['-p']
+    redirect_url = args['-r']
+    timeout = float(args['-t'])
+    url = args['<url>']
+
+    try:
+        u = urlparse(url)
+        headers['Host']=u.hostname
+        if u.path:
+            path = u.path
+        else:
+            path ='/'
+    except Exception as e:
+        print('Critical - unable to parse URL: %s' % e)
+        sys.exit(CRITICAL)
+
+    try:
+        if args['-a']:
+            auth = True
+            username, password = args['-a'].split(':', 1)
+    except Exception as e:
+        print('Critical - unable to parse auth string: %s' % args['-a'])
+        sys.exit(CRITICAL)
+
+    req_url = '%s://%s:%s%s' % (u.scheme, server_ip, server_port, path)
+
+    logging.debug('req url: %s' % req_url)
+    logging.debug('req headers: %s' % headers)
+
+    try:
+        if auth:
+            r = requests.head(req_url, headers=headers, timeout=timeout,
+                    verify=True, auth=(username,password)) 
+        else:
+            r = requests.head(req_url, headers=headers, timeout=timeout,
+                    verify=True)
+
+        logging.debug('Expected HTTP status: %s. Returned status: %s' %
+                (http_status,r.status_code))
+
+        if r.status_code == http_status:
+            location = r.headers['Location']
+            if location == redirect_url:
+                if vhost:
+                    print('OK - %s://%s%s redirects to %s' % (scheme,
+                            vhost, path, redirect_url))
+                else:
+                    print('OK - %s redirects to %s' % (url,
+                            redirect_url))
+                sys.exit(OK)
+            else:
+                if vhost:
+                    print('CRITICAL - %s://%s%s redirects to %s, should be %s' \
+                        % (scheme, vhost, path, location, redirect_url))
+                else:
+                    print('CRITICAL - %s redirects to %s, should be %s' \
+                        % (url, location, redirect_url))
+                sys.exit(CRITICAL)
+        else:
+            print("CRITICAL - Wrong HTTP status code. HTTP code %s" \
+                % r.status_code)
+            sys.exit(CRITICAL)
+    except Exception as e:
+        print("CRITICAL something went wrong: %s" % e)
+        sys.exit(CRITICAL)
+
+
+if __name__ == "__main__":
+    main()
