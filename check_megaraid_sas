@@ -63,6 +63,8 @@ my $othererrors = 0;
 my $otherallow = 0;
 my $result = '';
 my $status = 'OK';
+my $copyback = 0;
+my $rebuild = 0;
 
 if ( $opt_b ) {
         $megaclibin = $opt_b;
@@ -204,6 +206,10 @@ ADAPTER: for ( my $adp = 0; $adp < $adapters; $adp++ ) {
 			$fwstate = $1;
 			if ( $fwstate eq 'Hotspare' ) {
 				$hotsparecount++;
+			} elsif ( $fwstate eq 'Copyback' ) {
+				$copyback++;
+			} elsif ( $fwstate eq 'Rebuild' ) {
+				$rebuild++;
 			} elsif ( $fwstate eq 'Online' ) {
 				# Do nothing
 			} elsif ( $fwstate eq 'Unconfigured' ) {
@@ -245,5 +251,16 @@ if ( $hotspares ) {
 		$result .= "Hotspare(s):$hotsparecount";
 	}
 }
+
+if ( $copyback ) {
+	$result .= " Disks doing copyback:$copyback";
+	$status = max_state($status, 'WARNING');
+}
+
+if ( $rebuild ) {
+	$result .= " Disks doing rebuild:$rebuild";
+	$status = max_state($status, 'WARNING');
+}
+
 
 exitreport($status, $result);
