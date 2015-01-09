@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+
+PROGNAME=`basename $0`
+PROGPATH=`echo $0 | sed -e 's,[\\/][^\\/][^\\/]*$,,'`
+
+. $PROGPATH/utils.sh
+
+exitstatus=${STATE_UNKNOWN}
+MSG=""
+
+usage(){
+  echo " Usage: $PROGNAME [options]"
+  echo " Options:"
+  echo "   -h               : Print help"
+  echo "   -m <url>         : master repo URL"
+  echo "   -s <url>         : sync repo URL"
+  echo "   -u <user>        : svn username"
+  echo "   -p <pass>        : svn password"
+}
+
+getrev(){
+  local rev=$(svn info --username $1 --password $2 $3 2>/dev/null | grep ^Revision | cut -f2 -d' ')
+  # check we have a postive integer for rev
+  if (("$rev")) >/dev/null 2>&1; then
+    echo $rev
+    return 0
+  else
+    return 1
+  fi
+}
+
+while getopts "h?m:s:u:p:" OPT; do
+  case "$OPT" in
+  h|\?)
+      usage
+      exit 0
+      ;;
+  m)  master_url=$OPTARG
+      ;;
+  s)  sync_url=$OPTARG
+      ;;
+  u)  username=$OPTARG
+      ;;
+  p)  password=$OPTARG
+      ;;
+  esac
+done
+
+master_rev=$(getrev $username $password $master_url) || {
+  MSG="$MSG Unable to get master rev from $master_url."
+  exitstatus=$STATE_WARNING
+}
+
+sync_rev=$(getrev $username $password $sync_url)  || {
+  MSG="$MSG Unable to get sync rev from $sync_url."
+  exitstatus=$STATE_WARNING
+}
+
+if [[ $master_rev && $sync_rev ]]; then
+  rev_diff=$(echo "$master_rev - $sync_rev" | bc )
+  if [ $rev_diff != "0" ]; then
+    MSG="$MSG $master_url and $sync_url differ by $rev_diff revisions"
+    exitstatus=$STATE_CRITICAL
+  else
+    exitstatus=$STATE_OK
+  fi
+fi
+
+if [[ $MSG="" && $exitstatus -eq $STATE_OK ]]; then
+    MSG="$master_url and $sync_url at same svn rev $master_rev"
+fi
+
+echo -e $MSG
+exit $exitstatus
+
+
+
+
