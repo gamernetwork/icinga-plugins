@@ -1,0 +1,74 @@
+#!/bin/bash
+
+PROGNAME=`basename $0`
+PROGPATH=`echo $0 | sed -e 's,[\\/][^\\/][^\\/]*$,,'`
+
+. $PROGPATH/utils.sh
+
+exitstatus=${STATE_UNKNOWN}
+MSG=""
+
+usage(){
+  echo " Usage: $PROGNAME [options]"
+  echo " Options:"
+  echo "   -h               : Print help"
+  echo "   -m <url>         : master repo URL. Include password and username if required"
+  echo "   -s <url>         : sync repo URL. Include password and username if required"
+}
+
+getref(){
+  local ref=$(git ls-remote $1 | head -1 | cut -f1)
+  short_ref=${ref:0:12}
+  if [ $? -eq 0 ]; then
+    echo $short_ref
+    return 0
+  else
+    return 1
+  fi
+}
+
+while getopts "h?m:s:u:p:" OPT; do
+  case "$OPT" in
+  h|\?)
+      usage
+      exit 0
+      ;;
+  m)  master_url=$OPTARG
+      ;;
+  s)  sync_url=$OPTARG
+      ;;
+  esac
+done
+
+master_ref=$(getref $master_url) || {
+  MSG="$MSG Unable to get master ref from $master_url."
+  exitstatus=$STATE_WARNING
+}
+
+sync_ref=$(getref $sync_url)  || {
+  MSG="$MSG Unable to get sync ref from $sync_url."
+  exitstatus=$STATE_WARNING
+}
+
+if [[ $master_ref && $sync_ref ]]; then
+  if [ "$master_ref" != "$sync_ref" ]; then
+    MSG="$MSG $master_url ($master_ref) and $sync_url ($sync_ref) don't match"
+    exitstatus=$STATE_CRITICAL
+  else
+    exitstatus=$STATE_OK
+  fi
+else
+  MSG="$MSG Don't have two refs to compare."
+  exitstatus=$STATE_CRITICAL
+fi
+
+if [[ $MSG="" && $exitstatus -eq $STATE_OK ]]; then
+    MSG="$master_url and $sync_url at same ref $master_ref"
+fi
+
+echo -e $MSG
+exit $exitstatus
+
+
+
+
