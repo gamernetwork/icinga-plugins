@@ -1,0 +1,28 @@
+#!/bin/sh
+
+# check to see if anyone has mistakenly changed the io scheduler
+
+PROGNAME=`basename $0`
+PROGPATH=`echo $0 | sed -e 's,[\\/][^\\/][^\\/]*$,,'`
+
+. $PROGPATH/utils.sh
+
+if [ $# -eq 2 ]; then
+    DEV=$1
+    SCHED=$2
+    if [ -e "/sys/block/${DEV}/queue/scheduler" ]; then
+    	cat /sys/block/${DEV}/queue/scheduler | grep "\[${SCHED}\]"
+    	if [ $? = 1 ]; then
+    		echo "Critical: IO scheduler for ${DEV} has changed from ${SCHED}"
+    		exit $STATE_CRITICAL
+    	else
+    		echo "OK: IO scheduler for ${DEV} is ${SCHED}"
+    		exit $STATE_OK
+    	fi
+    else
+    	echo "Unknown: unable to find scheduler for ${DEV}"
+    	exit $STATE_UNKNOWN
+    fi
+else
+    echo "usage: ${PROGNAME} <device> <scheduler>"
+fi
